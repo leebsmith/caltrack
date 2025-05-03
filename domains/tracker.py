@@ -1,70 +1,55 @@
 #!/usr/bin/env python3
 """
-Tracker domain: pure‑logic CRUD for meals, activities, and fluids.
-Stubbed implementations to satisfy CLI imports; fill in storage logic later.
+caltrack.domains.tracker
+Pure‑logic CRUD for food, activity, and fluid entries.
+The CLI handles persistence via caltrack.storage.journal.append_record.
 """
-from datetime import datetime
-from typing import Optional, Dict, Any
+from datetime import date
+from typing import Dict, Any, List
 
-# Example entry record format (we'll persist via storage.journal when ready)
-# {
-#   "id": "20250502-abc123",
-#   "ts": "2025-05-02T19:23:00-04:00",
-#   "type": "food",  # food|activity|fluid
-#   "description": "2 scrambled eggs",
-#   "kcal": 180,
-#   "volume_ml": None,
-#   "minutes": None,
-#   "met": None,
-# }
+# ---------------------------------------------------------------------
+# Creation helpers (return dicts – caller is responsible for persistence)
+# ---------------------------------------------------------------------
 
-
-def add_food(id: str, date: date, meal: str,
-             description: str, kcal: int) -> Dict[str, Any]:    
-    """
-    Stub: Log a food entry.
-    Returns a dict mimicking the created record.
-    Replace with actual storage.journal.append logic later.
-    """
+def _base_rec(id: str, d: date, typ: str, desc: str) -> Dict[str, Any]:
     return {
         "id": id,
-        "date": date.isoformat(),
-        "meal": meal,
-        "description": description,
-        "kcal": kcal
+        "date": d.isoformat(),
+        "type": typ,
+        "description": desc,
     }
 
-    # TODO: append rec to entries.ndjson via storage.journal
+
+def add_food(id: str, d: date, meal: str, description: str, kcal: int) -> Dict[str, Any]:
+    rec = _base_rec(id, d, "food", description)
+    rec.update({"meal": meal, "kcal": kcal})
     return rec
 
 
-def add_activity(id: str, date: date,
-                 description: str, kcal_burned: int) -> Dict[str, Any]:
-    """
-    Stub: Log an activity entry.
-    Returns a dict mimicking the created record.
-    """
-    return {
-        "id": id,
-        "date": date.isoformat(),
-        "description": description,
-        "kcal_burned": kcal_burned
-    }
-    # TODO: append rec to entries.ndjson via storage.journal
+def add_activity(id: str, d: date, description: str, kcal_burned: int) -> Dict[str, Any]:
+    rec = _base_rec(id, d, "activity", description)
+    rec.update({"kcal_burned": kcal_burned})
     return rec
 
 
-def add_fluid(id: str, date: date,
-              description: str, volume_ml: int) -> Dict[str, Any]:
-    """
-    Stub: Log a fluid intake.
-    Returns a dict mimicking the created record.
-    """
-    return {
-        "id": id,
-        "date": date.isoformat(),
-        "description": description,
-        "volume_ml": volume_ml
-    }
-    # TODO: append rec to entries.ndjson via storage.journal
+def add_fluid(id: str, d: date, description: str, volume_ml: int) -> Dict[str, Any]:
+    rec = _base_rec(id, d, "fluid", description)
+    rec.update({"volume_ml": volume_ml})
     return rec
+
+# ---------------------------------------------------------------------
+# The following list/update/delete functions REQUIRE persistence layer.
+# They will be implemented after storage.journal helpers are finalised.
+# ---------------------------------------------------------------------
+
+
+def list_entries(start: date | None = None, end: date | None = None) -> List[Dict[str, Any]]:
+    raise NotImplementedError("Persistence layer not wired yet – CLI will call storage directly.")
+
+
+def update_entry(id: str, changes: Dict[str, Any]) -> Dict[str, Any]:
+    raise NotImplementedError
+
+
+def delete_entry(id: str):
+    raise NotImplementedError
