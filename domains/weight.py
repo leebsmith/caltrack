@@ -1,42 +1,42 @@
-# caltrack/domains/weight.py
-
 import uuid
 from datetime import datetime
-from caltrack.storage.weightlog import read_all, write_all
+from typing import Dict, Any, List
+from caltrack.storage.journal import append_record, read_all_records, _rewrite_all_records
 
-def add(ts: datetime, kg: float) -> dict:
-    recs = read_all()
-    new = {
-        "id": uuid.uuid4().hex[:8],
+def _base_rec(id: str, ts: datetime, kg: float) -> Dict[str, Any]:
+    return {
+        "id": id,
+        "type": "weight",
         "ts": ts.isoformat(),
         "kg": kg
     }
-    recs.append(new)
-    write_all(recs)
-    return new
 
-def list_weights(start: datetime|None=None, end: datetime|None=None) -> list[dict]:
-    recs = read_all()
-    out = []
-    for r in recs:
-        t = datetime.fromisoformat(r["ts"])
-        if (start is None or t >= start) and (end is None or t <= end):
-            out.append(r)
-    return out
+def add(ts: datetime, kg: float) -> Dict[str, Any]:
+    rec = _base_rec(uuid.uuid4().hex[:8], ts, kg)
+    append_record(rec)
+    return rec
 
-def update(id: str, new_kg: float) -> dict:
-    recs = read_all()
-    for r in recs:
-        if r["id"] == id:
-            r["kg"] = new_kg
-            r["ts"] = datetime.now().isoformat()  # update timestamp
-            write_all(recs)
-            return r
-    raise KeyError(f"No weight record with id={id}")
+def list_weights() -> List[Dict[str, Any]]:
+    records = read_all_records()
+    return [r for r in records if r.get('type') == 'weight']
 
-def delete(id: str) -> None:
-    recs = read_all()
-    recs2 = [r for r in recs if r["id"] != id]
-    if len(recs2) == len(recs):
-        raise KeyError(f"No weight record with id={id}")
-    write_all(recs2)
+def update(entry_id: str, kg: float) -> Dict[str, Any]:
+    records = read_all_records()
+    updated = None
+    for r in records:
+        if r.get('id') == entry_id and r.get('type') == 'weight':
+            r['kg'] = kg
+            updated = r
+            break
+    if updated:
+        _rewrite_all_records(records)
+        return updated
+    else:
+        raise KeyError(f"Weight entry {entry_id} not found")
+
+def delete(entry_id: str):
+    records = read_all_records()
+    new_records = [r for r in records if not (r.get('id') == entry_id and r.get('type') == 'weight')]
+    if len(new_records) == len(records):
+        raise KeyError(f"Weight entry {entry_id} not found")
+    _rewrite_all_records(new_records)
