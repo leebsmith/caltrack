@@ -1,6 +1,8 @@
 from datetime import date
-from typing import Any, Dict, List, Optional, Literal
-from pydantic import BaseModel, Field
+from typing import Literal, Optional, Union, List, Dict
+from pydantic import BaseModel
+
+# Define specific entry types
 
 class FoodEntry(BaseModel):
     id:          str
@@ -24,22 +26,42 @@ class FluidEntry(BaseModel):
     description: str
     volume_ml:   int
 
+class WeightEntry(BaseModel):
+    id: str
+    date: date
+    kg: float
+
+Entry = Union[FoodEntry, ActivityEntry, FluidEntry, WeightEntry]
+
+# Define target and range
+
 class Target(BaseModel):
-    id:       Optional[str]
-    date:     Optional[str]
+    id: Optional[str]
+    date: Optional[str]
     contains: Optional[str]
-    type:     Optional[str]
+    type: Optional[Literal["food", "activity", "fluid", "weight"]]
 
 class Range(BaseModel):
-    type:  str       # relative|absolute
-    value: str       # e.g. "last month" or "2025-01-01…2025-05-01"
+    type: Literal["relative", "absolute"]
+    value: str
+
+# Define allowed actions explicitly
+
+AllowedAction = Literal[
+    "add", "add_weight",
+    "read", "read_weight",
+    "update", "update_weight",
+    "delete", "delete_weight"
+]
+
+# Command model
 
 class Command(BaseModel):
-    action:         str
-    target:         Optional[Target]
-    entries:        Optional[List[Any]]
+    action: AllowedAction
+    target: Optional[Target] = None
+    entries: Optional[List[Entry]] = None
     needs_confirmation: Optional[bool] = False
-    range:          Optional[Range]
-    format:         Optional[str]
-    set:            Optional[Dict[str, Any]]
-    explicit_time:  bool = False
+    range: Optional[Range] = None
+    format: Optional[Literal["daily", "ma3", "ma5", "ma7"]] = None
+    set: Optional[Dict[str, Union[str, int, float]]] = None
+    explicit_time: bool = False

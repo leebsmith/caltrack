@@ -9,6 +9,7 @@ from datetime import datetime, date
 from dateutil import parser as dateparser
 
 from caltrack.llm_client import call_llm
+from caltrack.models import Command
 from caltrack.domains import weight as weight_domain
 from caltrack.domains import tracker as tracker_domain
 from caltrack.storage.journal import append_record
@@ -18,9 +19,8 @@ from caltrack.storage.journal import append_record
 def parse_date_range(range_obj):
     rtype = range_obj.type
     val = range_obj.value
-    # Treat both 'absolute' and 'date' as date spans
+    # Handle absolute spans and 'date' type
     if rtype in ("absolute", "date"):
-        # detect various separators
         if '…' in val:
             parts = [p.strip() for p in val.split('…')]
         elif '..' in val:
@@ -33,7 +33,7 @@ def parse_date_range(range_obj):
             start = end = date.fromisoformat(parts[0])
         else:
             start = date.fromisoformat(parts[0])
-            end = date.fromisoformat(parts[1])
+            end   = date.fromisoformat(parts[1])
     elif rtype == "relative":
         dt = dateparser.parse(val, default=datetime.now()).date()
         start = end = dt
@@ -55,6 +55,7 @@ def print_weight_table(rows):
 def resolve_weight_target(target_obj, rows):
     if target_obj.id:
         return target_obj.id
+    matches = []
     if target_obj.date:
         target_date = dateparser.parse(target_obj.date).date().isoformat()
         matches = [r for r in rows if dateparser.parse(r['ts']).date().isoformat() == target_date]
@@ -75,10 +76,14 @@ def resolve_weight_target(target_obj, rows):
 
 
 def confirm_date(dstr):
-    resp = input(f"Date resolved to {dstr}. Is that correct? (y/N) ")
-    if resp.strip().lower().startswith('y'):
+    resp = input(f"Date resolved to {dstr}. Is that correct? (y/N) ").strip().lower()
+    if resp.startswith('y'):
         return date.fromisoformat(dstr)
-    sys.exit("Aborted by user.")
+    override = input("Please enter the correct date (YYYY-MM-DD): ").strip()
+    try:
+        return date.fromisoformat(override)
+    except ValueError:
+        sys.exit("Invalid date format. Aborting.")
 
 # ---------------- Main -----------------
 
@@ -91,68 +96,37 @@ def main():
         print(cmd)
         return
 
-                        # --- Determine action ---
-    # Priority 1: tracker ADD if entries of food/activity/fluid are present
-    if getattr(cmd, 'entries', None):
-        first = cmd.entries[0]
-        typ0 = first.get('type') if isinstance(first, dict) else first.type
-        if typ0 in ('food', 'activity', 'fluid'):
-            cmd.action = 'add'
-            # skip to CRUD routing
-        else:
-            act = cmd.action.lower().replace(' ', '_')
-            # Weight-specific reads
-            if act in ('show_weight', 'read_weight', 'list_weight'):
-                cmd.action = 'read_weight'
-            # Tracker-specific reads
-            elif act in (
-                'show_meals','list_meals','show_entries','list_entries',
-                'show_food','list_food','show_foods','list_foods',
-                'show_activity','list_activity','show_activities',
-                'show_fluid','list_fluid','show_fluids','list_fluids'
-            ):
-                cmd.action = 'read'
-            # General read/list defaults to tracker
-            elif act in ('show', 'read', 'list'):
-                cmd.action = 'read'
-            # Add weight
-            elif act in ('add_weight',):
-                cmd.action = 'add_weight'
-            # Weight update
-            elif act in ('update_weight', 'change_weight'):
-                cmd.action = 'update_weight'
-            # Tracker update
-            elif act in ('update', 'change', 'modify'):
-                cmd.action = 'update'
-            # Weight delete
-            elif act in ('delete_weight', 'remove_weight'):
-                cmd.action = 'delete_weight'
-            # Tracker delete by default
-            elif act in ('delete', 'remove'):
-                cmd.action = 'delete'
-    else:
-        # No entries => follow standard mapping
-        act = cmd.action.lower().replace(' ', '_')
-        if act in ('show_weight', 'read_weight', 'list_weight'):
-            cmd.action = 'read_weight'
-        elif act in ('add_weight',):
-            cmd.action = 'add_weight'
-        elif act in ('update_weight', 'change_weight'):
-            cmd.action = 'update_weight'
-        elif act in ('delete_weight', 'remove_weight'):
-            cmd.action = 'delete_weight'
-        elif act in ('delete', 'remove'):
-            cmd.action = 'delete'
-        elif act in ('update', 'change', 'modify'):
-            cmd.action = 'update'
-        elif act in ('show', 'read', 'list',
-                     'show_meals','list_meals','show_entries','list_entries',
-                     'show_food','list_food','show_foods','list_foods',
-                     'show_activity','list_activity','show_activities',
-                     'show_fluid','list_fluid','show_fluids','list_fluids'):
-            # defaults to read/logical grouping
-            # if it mentions meals/food etc, 'read', else if generic, default to 'read'
-            cmd.action = 'read'
+    # --- Action mapping (prioritize reads) ---
+    act = cmd.action.lower().replace(' ', '_')
+    # Tracker read
+    if act in (
+        'show','read','list',
+        'show_meals','list_meals','show_food','list_foods',
+        'show_activity','list_activity','show_activities',
+        'show_fluid','list_fluid','show_fluids'
+    ):
+        cmd.action = 'read'
+    # Weight read
+    elif act in ('show_weight','read_weight','list_weight'):
+        cmd.action = 'read_weight'
+    # Tracker add
+    elif act in ('add','add_food','consume'):
+        cmd.action = 'add'
+    # Weight add
+    elif act in ('add_weight',):
+        cmd.action = 'add_weight'
+    # Tracker update
+    elif act in ('update','change','modify'):
+        cmd.action = 'update'
+    # Weight update
+    elif act in ('update_weight','change_weight'):
+        cmd.action = 'update_weight'
+    # Tracker delete
+    elif act in ('delete','remove'):
+        cmd.action = 'delete'
+    # Weight delete
+    elif act in ('delete_weight','remove_weight'):
+        cmd.action = 'delete_weight'
 
     # ---------------- Weight CRUD ----------------
     # Add weight
@@ -211,26 +185,16 @@ def main():
     # ---------------- Tracker ADD ----------------
     if cmd.action == 'add' and getattr(cmd, 'entries', None):
         for e in cmd.entries:
-            # determine date: explicit vs default (today)
+            # determine date
             if cmd.explicit_time:
-                # use the date/time provided by LLM
                 date_str = e.get('date') if isinstance(e, dict) else e.date
-                if cmd.needs_confirmation:
-                    d = confirm_date(date_str)
-                else:
-                    d = date.fromisoformat(date_str)
+                d = confirm_date(date_str) if cmd.needs_confirmation else date.fromisoformat(date_str)
             else:
-                # default to today and always confirm
                 today_str = date.today().isoformat()
                 d = confirm_date(today_str)
-
-            # generate ID
             eid = uuid.uuid4().hex[:8]
-            # extract common fields
             typ = e.get('type') if isinstance(e, dict) else e.type
             desc = e.get('description') if isinstance(e, dict) else e.description
-
-            # build and persist record by type
             if typ == 'food':
                 meal = e.get('meal') if isinstance(e, dict) else e.meal
                 kcal = e.get('kcal') if isinstance(e, dict) else e.kcal
@@ -247,43 +211,26 @@ def main():
             print(f"✔ logged {rec}")
         return
 
-            # ---------------- Tracker READ ----------------
+    # ---------------- Tracker READ ----------------
     if cmd.action == 'read':
-        # Determine date window: explicit range or target.date or open
+        # Determine range
         if getattr(cmd, 'range', None):
             start, end = parse_date_range(cmd.range)
         elif getattr(cmd.target, 'date', None):
             date_str = cmd.target.date
-            # multi-day if contains separator
-            if ' to ' in date_str or '…' in date_str or '..' in date_str:
-                # parse as absolute span
-                class TempR: pass
-                tmp = TempR()
-                tmp.type = 'absolute'
-                tmp.value = date_str
+            if any(sep in date_str for sep in (' to ', '…', '..')):
+                class Tmp: pass
+                tmp = Tmp(); tmp.type='absolute'; tmp.value=date_str
                 start, end = parse_date_range(tmp)
             else:
                 dt = dateparser.parse(date_str).date()
                 start = end = dt
         else:
             start = end = None
-        # Fetch entries in range
         rows = tracker_domain.list_entries(start, end)
         if not rows:
             print('No tracker entries found.')
             return
-        # Print a simple table
-        print(f"{'Date':<12} {'Type':<8} {'Desc':<30} {'Val':<6} ID")
-        for r in rows:
-            val = r.get('kcal') or r.get('kcal_burned') or r.get('volume_ml')
-            print(f"{r['date']:<12} {r['type']:<8} {r['description'][:30]:<30} {val:<6} {r['id']}")
-        return
-        # Print a simple table
-        print(f"{'Date':<12} {'Type':<8} {'Desc':<30} {'Val':<6} ID")
-        for r in rows:
-            val = r.get('kcal') or r.get('kcal_burned') or r.get('volume_ml')
-            print(f"{r['date']:<12} {r['type']:<8} {r['description'][:30]:<30} {val:<6} {r['id']}")
-        return
         print(f"{'Date':<12} {'Type':<8} {'Desc':<30} {'Val':<6} ID")
         for r in rows:
             val = r.get('kcal') or r.get('kcal_burned') or r.get('volume_ml')
@@ -298,14 +245,15 @@ def main():
             updated = tracker_domain.update_entry(e.id, changes)
             print(f"✔ tracker record updated: {updated}")
             return
-        if cmd.target and getattr(cmd,'set',None):
+        if cmd.target and getattr(cmd, 'set', None):
             updated = tracker_domain.update_entry(cmd.target.id, cmd.set)
             print(f"✔ tracker record updated: {updated}")
             return
-        print('Error: missing target or changes for update.'); return
+        print('Error: missing target or changes for update.')
+        return
 
     # ---------------- Tracker DELETE ----------------
-    if cmd.action == 'delete' and getattr(cmd.target,'id', None):
+    if cmd.action == 'delete' and getattr(cmd.target, 'id', None):
         try:
             tracker_domain.delete_entry(cmd.target.id)
             print(f"✔ tracker record {cmd.target.id} deleted")
