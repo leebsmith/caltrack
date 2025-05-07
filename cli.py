@@ -42,7 +42,12 @@ def main():
         print('Usage: caltrack "<command>" [--verbose]')
         sys.exit(1)
 
-    structured_cmd = call_llm(command_input)
+    try:
+        structured_cmd = call_llm(command_input)
+    except Exception as e:
+        print(f"ERROR: {e}")
+        return
+
     print("DEBUG: Structured LLM response:", structured_cmd)
 
     if not structured_cmd or not structured_cmd.action:
@@ -50,6 +55,31 @@ def main():
         return
 
     action = structured_cmd.action.lower().replace(' ', '_')
+
+    if action == 'delete':
+        if structured_cmd.target and structured_cmd.target.id:
+            eid = structured_cmd.target.id
+            deleted = tracker_domain.delete_entry(eid) or weight_domain.delete(eid)
+            if deleted:
+                print(f"✔ deleted entry with id={eid}")
+            else:
+                print(f"✘ no entry found with id={eid}")
+            return
+
+        start, end = parse_date_range(structured_cmd.model_dump())
+        if not start or not end:
+            print("ERROR: No valid date or range found for deletion.")
+            return
+        confirm = input(f"WARNING: This will delete all entries from {start} to {end}. Proceed? (y/N) ").strip().lower()
+        if confirm != 'y':
+            print("Aborted by user.")
+            return
+        entries = tracker_domain.list_entries()
+        to_delete = [e for e in entries if start <= datetime.fromisoformat(e['date']).date() <= end]
+        for e in to_delete:
+            tracker_domain.delete_entry(e['id'])
+        print(f"✔ deleted {len(to_delete)} entries from {start} to {end}")
+        return
 
     if action in ('add', 'add_food', 'consume') and structured_cmd.entries:
         for e in structured_cmd.entries:
@@ -85,13 +115,12 @@ def main():
             entries = [e for e in entries if e.get('type') == requested_type]
 
         start, end = parse_date_range(structured_cmd.dict())
-        if start and end:
-            print(f"DEBUG: Using explicit date range: {start} to {end}")
-        else:
+        if not start or not end:
             all_dates = [datetime.fromisoformat(e['date']).date() for e in entries if e.get('date')]
             if all_dates:
-                start = end = min(all_dates)
-                print(f"DEBUG: Defaulting to earliest date: {start}")
+                start = min(all_dates)
+                end = max(all_dates)
+                print(f"DEBUG: No specific range provided. Interpreting as full data span: {start} to {end}")
             else:
                 print("DEBUG: No dates found in entries")
                 return

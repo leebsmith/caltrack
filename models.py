@@ -2,29 +2,29 @@ from datetime import date
 from typing import Literal, Optional, Union, List, Dict
 from pydantic import BaseModel
 
-# Define specific entry types
+# --- Entry Types ---
 
 class FoodEntry(BaseModel):
-    id:          str
-    date:        date
-    meal:        Literal[
+    id: str
+    date: date
+    meal: Literal[
         "breakfast", "brunch", "lunch", "afternoon snack",
         "dinner", "late snack", "late night snack"
     ]
     description: str
-    kcal:        int
+    kcal: int
 
 class ActivityEntry(BaseModel):
-    id:          str
-    date:        date
+    id: str
+    date: date
     description: str
-    kcal_burned: int
+    kcal_burned: int  # Should be negative for calories burned
 
 class FluidEntry(BaseModel):
-    id:          str
-    date:        date
+    id: str
+    date: date
     description: str
-    volume_ml:   int
+    volume_ml: int
 
 class WeightEntry(BaseModel):
     id: str
@@ -33,19 +33,21 @@ class WeightEntry(BaseModel):
 
 Entry = Union[FoodEntry, ActivityEntry, FluidEntry, WeightEntry]
 
-# Define target and range
+# --- Target + Range ---
+
 
 class Target(BaseModel):
-    id: Optional[str]
-    date: Optional[str]
-    contains: Optional[str]
-    type: Optional[Literal["food", "activity", "fluid", "weight"]]
+    id: Optional[str] = None
+    date: Optional[str] = None
+    contains: Optional[str] = None
+    type: Optional[Literal["food", "activity", "fluid", "weight"]] = None
+
 
 class Range(BaseModel):
     type: Literal["relative", "absolute"]
-    value: str
+    value: str  # e.g., "2023-04-01 to 2023-04-30"
 
-# Define allowed actions explicitly
+# --- Allowed Actions ---
 
 AllowedAction = Literal[
     "add", "add_weight",
@@ -54,11 +56,11 @@ AllowedAction = Literal[
     "delete", "delete_weight"
 ]
 
-# Command model
+# --- Command Schema ---
 
 class Command(BaseModel):
     action: AllowedAction
-    target: Optional[Target] = None
+    target: Optional[Target] = None  # Required for read/delete; may omit date if type is set
     entries: Optional[List[Entry]] = None
     needs_confirmation: Optional[bool] = False
     range: Optional[Range] = None
