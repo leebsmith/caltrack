@@ -30,7 +30,7 @@ def add_fluid(id: str, d: date, description: str, volume_ml: int) -> Dict[str, A
     return rec
 
 def list_entries() -> List[Dict[str, Any]]:
-    records = read_all_records()  # <-- Always fresh read from file
+    records = read_all_records()
     return [r for r in records if r.get('type') in ('food', 'activity', 'fluid')]
 
 def update_entry(entry_id: str, changes: Dict[str, Any]) -> Dict[str, Any]:

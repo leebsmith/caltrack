@@ -18,7 +18,9 @@ def add(ts: datetime, kg: float) -> Dict[str, Any]:
 
 def list_weights() -> List[Dict[str, Any]]:
     records = read_all_records()
-    return [r for r in records if r.get('type') == 'weight']
+    weights = [r for r in records if r.get('type') == 'weight']
+    print(f"DEBUG: Found {len(weights)} weight records")
+    return weights
 
 def update(entry_id: str, kg: float) -> Dict[str, Any]:
     records = read_all_records()
@@ -30,6 +32,7 @@ def update(entry_id: str, kg: float) -> Dict[str, Any]:
             break
     if updated:
         _rewrite_all_records(records)
+        print(f"DEBUG: Updated weight entry {entry_id}")
         return updated
     else:
         raise KeyError(f"Weight entry {entry_id} not found")
@@ -40,3 +43,4 @@ def delete(entry_id: str):
     if len(new_records) == len(records):
         raise KeyError(f"Weight entry {entry_id} not found")
     _rewrite_all_records(new_records)
+    print(f"DEBUG: Deleted weight entry {entry_id}")
